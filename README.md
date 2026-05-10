@@ -22,6 +22,7 @@ AI-powered HVAC recommendation assistant using:
 - pandas
 - Streamlit
 
+```
 ## Project Architecture
 hvac-recommendation-system/
 │
@@ -68,6 +69,7 @@ hvac-recommendation-system/
     ├── test_data.py
     ├── test_model.py
     └── test_recommendation.py
+```
 
 ## Business Impact
 - Faster consultation
