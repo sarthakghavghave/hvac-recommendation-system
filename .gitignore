@@ -1,0 +1,6 @@
+__pycache__/
+venv/
+.venv/
+data/raw/*.csv
+data/processed/*.csv
+models/*.pkl
