@@ -404,9 +404,7 @@ def recommend_hvac(
             "Multi-Split"
         ])
 
-    confidence = round(np.max(probs) * 100, 2)
-
-    return hvac, confidence
+    return hvac
 
 def estimate_cost(hvac, tonnage):
 
@@ -553,7 +551,7 @@ for _ in range(NUM_ROWS):
         tonnage
     )
 
-    recommended_hvac, confidence = recommend_hvac(
+    recommended_hvac = recommend_hvac(
         tonnage,
         floors,
         area_sqft,
@@ -599,8 +597,6 @@ for _ in range(NUM_ROWS):
 
         "installation_cost": round(installation_cost, 2),
         "efficiency_score": efficiency,
-
-        "recommendation_confidence": confidence,
 
         "recommended_hvac": recommended_hvac
     }
