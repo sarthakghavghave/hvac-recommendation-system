@@ -3,9 +3,10 @@ import pandas as pd
 import random
 from pathlib import Path
 
-PROJECT_ROOT = Path().resolve()
 np.random.seed(42)
 random.seed(42)
+
+PROJECT_ROOT = Path().resolve()
 
 NUM_ROWS = 20000
 
@@ -53,6 +54,7 @@ glass_factor = {
 }
 
 def weighted_choice(data):
+
     return np.random.choice(
         list(data.keys()),
         p=list(data.values())
@@ -63,20 +65,25 @@ def generate_area(building_type):
     params = {
         "Residential": (1800, 700),
         "Office": (25000, 12000),
-        "Retail": (45000, 20000),
-        "Hospital": (120000, 45000),
-        "Industrial": (80000, 30000)
+        "Retail": (45000, 22000),
+        "Hospital": (120000, 50000),
+        "Industrial": (80000, 35000)
     }
 
     mean, std = params[building_type]
 
-    return max(500, np.random.normal(mean, std))
+    area = np.random.normal(mean, std)
+
+    return max(500, area)
 
 def generate_floors(area_sqft):
 
-    floors = int(area_sqft / 15000 + np.random.normal(0, 1))
+    floors = (
+        area_sqft / 18000
+        + np.random.normal(0, 1.5)
+    )
 
-    return max(1, floors)
+    return max(1, int(floors))
 
 def generate_occupancy(building_type, area_sqft):
 
@@ -88,10 +95,12 @@ def generate_occupancy(building_type, area_sqft):
         "Industrial": 0.05
     }
 
+    occupancy_behavior = np.random.normal(1, 0.25)
+
     occupancy = (
         area_sqft
         * density_map[building_type]
-        * np.random.normal(1, 0.15)
+        * occupancy_behavior
     )
 
     return max(1, int(occupancy))
@@ -137,21 +146,24 @@ def generate_climate(climate_zone):
 
     temp_mean, humidity_mean = climate_data[climate_zone]
 
-    outdoor_temp = np.random.normal(temp_mean, 3)
+    outdoor_temp = np.random.normal(temp_mean, 4)
 
-    humidity = np.random.normal(humidity_mean, 8)
+    humidity = np.random.normal(humidity_mean, 10)
 
     return outdoor_temp, humidity
 
 def generate_insulation(budget_level, building_age):
 
     if budget_level == "Low":
+
         probs = [0.6, 0.4, 0.0, 0.0]
 
     elif budget_level == "Medium":
+
         probs = [0.15, 0.5, 0.35, 0.0]
 
     else:
+
         probs = [0.0, 0.2, 0.5, 0.3]
 
     insulation = np.random.choice(
@@ -174,7 +186,7 @@ def generate_glass_ratio(building_type):
 
         return np.random.choice(
             ["Medium", "High"],
-            p=[0.5, 0.5]
+            p=[0.45, 0.55]
         )
 
     return np.random.choice(
@@ -193,7 +205,12 @@ def calculate_heat_gain(
 
     occupancy_factor = 1 + (occupancy / 1000)
 
-    age_factor = 1 + (building_age / 100)
+    age_factor = np.random.normal(
+        1 + (building_age / 120),
+        0.10
+    )
+
+    random_building_behavior = np.random.normal(1, 0.18)
 
     heat_gain = (
         area_sqft
@@ -202,17 +219,51 @@ def calculate_heat_gain(
         * insulation_factor[insulation]
         * glass_factor[glass_ratio]
         * age_factor
+        * random_building_behavior
     )
 
     return heat_gain
 
-def calculate_cooling_load(heat_gain):
+def calculate_cooling_load(
+    heat_gain,
+    building_age
+):
 
-    return heat_gain * np.random.normal(1, 0.08)
+    operational_variation = np.random.normal(1, 0.18)
+
+    occupancy_behavior = np.random.normal(1, 0.20)
+
+    ventilation_loss = np.random.normal(1, 0.15)
+
+    equipment_degradation = np.random.normal(
+        1 + (building_age / 180),
+        0.12
+    )
+
+    control_efficiency = np.random.normal(1, 0.18)
+
+    cooling_load = (
+        heat_gain
+        * operational_variation
+        * occupancy_behavior
+        * ventilation_loss
+        * equipment_degradation
+        * control_efficiency
+    )
+
+    return cooling_load
 
 def estimate_tonnage(cooling_load):
 
-    return round(cooling_load / 12000, 2)
+    oversizing_factor = np.random.normal(1.15, 0.25)
+
+    installer_preference = np.random.normal(1, 0.15)
+
+    tonnage = (
+        cooling_load / 12000
+    ) * oversizing_factor * installer_preference
+
+    return round(tonnage, 2)
 
 def estimate_energy(
     tonnage,
@@ -221,17 +272,29 @@ def estimate_energy(
     building_age
 ):
 
-    age_penalty = 1 + (building_age / 150)
+    occupancy_behavior = np.random.normal(1, 0.20)
+
+    control_efficiency = np.random.normal(1, 0.18)
+
+    partial_load_factor = np.random.normal(1, 0.15)
+
+    age_penalty = np.random.normal(
+        1 + (building_age / 160),
+        0.12
+    )
 
     energy = (
         tonnage
         * operating_hours
         * climate_factor[climate_zone]
+        * occupancy_behavior
+        * control_efficiency
+        * partial_load_factor
         * age_penalty
         * 30
     )
 
-    energy *= np.random.normal(1, 0.1)
+    energy *= np.random.normal(1, 0.15)
 
     return round(energy, 2)
 
@@ -244,6 +307,7 @@ def softmax(x):
 def recommend_hvac(
     tonnage,
     floors,
+    area_sqft,
     building_type,
     budget_level,
     building_age
@@ -257,23 +321,35 @@ def recommend_hvac(
         "Central Chiller": 0
     }
 
+    # Tonnage influence
+
     if tonnage < 5:
         scores["Split AC"] += 5
 
     if 5 <= tonnage < 20:
-        scores["Multi-Split"] += 5
+        scores["Multi-Split"] += 4
 
     if 15 <= tonnage < 80:
-        scores["VRF"] += 5
+        scores["VRF"] += 4
+
+    if 20 <= tonnage <= 60:
+        scores["Packaged Unit"] += 4
 
     if tonnage > 70:
-        scores["Central Chiller"] += 6
+        scores["Central Chiller"] += 5
+
+    # Floors
 
     if floors > 3:
         scores["VRF"] += 3
 
+    if floors <= 3 and area_sqft > 30000:
+        scores["Packaged Unit"] += 3
+
     if floors > 8:
         scores["Central Chiller"] += 2
+
+    # Building type
 
     if building_type == "Hospital":
         scores["Central Chiller"] += 5
@@ -281,19 +357,30 @@ def recommend_hvac(
     if building_type == "Industrial":
         scores["Packaged Unit"] += 4
 
+    if building_type == "Retail":
+        scores["Packaged Unit"] += 3
+
     if building_type == "Residential":
         scores["Split AC"] += 4
 
+    # Budget
+
     if budget_level == "Low":
         scores["Split AC"] += 3
+
+    if budget_level == "Medium":
+        scores["Packaged Unit"] += 2
 
     if budget_level == "High":
         scores["VRF"] += 2
         scores["Central Chiller"] += 2
 
+    # Building age
+
     if building_age > 40:
 
         scores["Split AC"] += 2
+
         scores["Packaged Unit"] += 2
 
         scores["Central Chiller"] -= 2
@@ -302,9 +389,20 @@ def recommend_hvac(
 
     values = np.array(list(scores.values()))
 
-    probs = softmax(values)
+    temperature = 2.5
+
+    probs = softmax(values / temperature)
 
     hvac = np.random.choice(labels, p=probs)
+
+    # Recommendation randomness
+    if np.random.rand() < 0.08:
+
+        hvac = np.random.choice([
+            "VRF",
+            "Packaged Unit",
+            "Multi-Split"
+        ])
 
     confidence = round(np.max(probs) * 100, 2)
 
@@ -320,9 +418,23 @@ def estimate_cost(hvac, tonnage):
         "Central Chiller": 180000
     }
 
-    cost = tonnage * cost_map[hvac]
+    base_cost = tonnage * cost_map[hvac]
 
-    cost *= np.random.normal(1, 0.1)
+    retrofit_complexity = np.random.normal(1, 0.30)
+
+    brand_premium = np.random.normal(1, 0.20)
+
+    material_variation = np.random.normal(1, 0.15)
+
+    regional_variation = np.random.normal(1, 0.18)
+
+    cost = (
+        base_cost
+        * retrofit_complexity
+        * brand_premium
+        * material_variation
+        * regional_variation
+    )
 
     return round(cost, 2)
 
@@ -332,9 +444,12 @@ def efficiency_score(
     building_age
 ):
 
-    score = 100
+    operational_quality = np.random.normal(1, 0.15)
 
-    score -= energy_consumption / 120
+    score = (
+        100
+        - (energy_consumption / 150)
+    ) * operational_quality
 
     if insulation == "Poor":
         score -= 15
@@ -347,18 +462,26 @@ def efficiency_score(
 def inject_anomalies(
     occupancy,
     energy_consumption,
-    cooling_load
+    cooling_load,
+    tonnage
 ):
 
-    if np.random.rand() < 0.03:
+    if np.random.rand() < 0.04:
 
         occupancy *= np.random.uniform(1.5, 3)
 
-        energy_consumption *= np.random.uniform(1.5, 2.5)
+        energy_consumption *= np.random.uniform(1.5, 2.8)
 
-        cooling_load *= np.random.uniform(1.5, 2)
+        cooling_load *= np.random.uniform(1.4, 2.2)
 
-    return occupancy, energy_consumption, cooling_load
+        tonnage *= np.random.uniform(1.3, 2)
+
+    return (
+        occupancy,
+        energy_consumption,
+        cooling_load,
+        tonnage
+    )
 
 for _ in range(NUM_ROWS):
 
@@ -408,7 +531,8 @@ for _ in range(NUM_ROWS):
     )
 
     cooling_load = calculate_cooling_load(
-        heat_gain
+        heat_gain,
+        building_age
     )
 
     tonnage = estimate_tonnage(
@@ -422,15 +546,17 @@ for _ in range(NUM_ROWS):
         building_age
     )
 
-    occupancy, energy_consumption, cooling_load = inject_anomalies(
+    occupancy, energy_consumption, cooling_load, tonnage = inject_anomalies(
         occupancy,
         energy_consumption,
-        cooling_load
+        cooling_load,
+        tonnage
     )
 
     recommended_hvac, confidence = recommend_hvac(
         tonnage,
         floors,
+        area_sqft,
         building_type,
         budget_level,
         building_age
@@ -453,7 +579,7 @@ for _ in range(NUM_ROWS):
         "climate_zone": climate_zone,
         "budget_level": budget_level,
 
-        "area_sqft": area_sqft,
+        "area_sqft": round(area_sqft, 2),
         "floors": floors,
         "occupancy": occupancy,
         "operating_hours": operating_hours,
@@ -468,10 +594,10 @@ for _ in range(NUM_ROWS):
         "heat_gain": round(heat_gain, 2),
         "cooling_load": round(cooling_load, 2),
 
-        "tonnage": tonnage,
-        "energy_consumption": energy_consumption,
+        "tonnage": round(tonnage, 2),
+        "energy_consumption": round(energy_consumption, 2),
 
-        "installation_cost": installation_cost,
+        "installation_cost": round(installation_cost, 2),
         "efficiency_score": efficiency,
 
         "recommendation_confidence": confidence,
@@ -483,17 +609,21 @@ for _ in range(NUM_ROWS):
 
 df = pd.DataFrame(dataset)
 
+# Missing values
 for col in df.columns:
 
     mask = np.random.rand(len(df)) < 0.02
 
     df.loc[mask, col] = np.nan
 
-df.to_csv(PROJECT_ROOT / "data/raw/hvac_synthetic_dataset_v2.csv", index=False)
+# Save
+output_path = PROJECT_ROOT / "data/raw/hvac_synthetic_dataset_v3.csv"
 
-print(df.head())
+df.to_csv(output_path, index=False)
 
 print("\nDataset Shape:", df.shape)
 
 print("\nHVAC Distribution:")
 print(df["recommended_hvac"].value_counts())
+
+print(f"\nSaved to: {output_path}")
