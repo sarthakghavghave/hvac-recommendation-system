@@ -8,7 +8,10 @@ sys.path.append(
 )
 
 import streamlit as st
+
 from src.llm.extractor import extract_hvac_features
+from src.feature_engineering.pipeline import build_feature_pipeline
+from src.llm.question_generator import generate_followup_questions
 
 # ─────────────────────────────────────────────────────────────
 # PAGE CONFIG
@@ -16,8 +19,8 @@ from src.llm.extractor import extract_hvac_features
 
 st.set_page_config(
     page_title="HVAC Intelligence Platform",
-    page_icon="❄️",
-    layout="wide"
+    layout="wide",
+    page_icon="❄️"
 )
 
 # ─────────────────────────────────────────────────────────────
@@ -28,74 +31,97 @@ st.markdown("""
 <style>
 
 .block-container {
-    padding-top: 2rem;
+    padding-top: 1.5rem;
     padding-bottom: 1rem;
-    padding-left: 2rem;
-    padding-right: 2rem;
 }
 
 .main-title {
-    font-size: 2.8rem;
+    font-size: 2.5rem;
     font-weight: 700;
-    color: #E5E7EB;
-    line-height: 1.1;
+    color: #00BFFF;
+    margin-bottom: 0.2rem;
 }
 
 .subtitle {
     font-size: 1.05rem;
-    color: #9CA3AF;
-    margin-top: 0.5rem;
+    color: #AAAAAA;
     margin-bottom: 1.5rem;
 }
 
 .metric-card {
-    background: #111827;
-    border: 1px solid #1F2937;
-    padding: 20px;
-    border-radius: 16px;
+    background-color: #111827;
+    padding: 18px;
+    border-radius: 14px;
+    border-left: 4px solid #00BFFF;
     margin-bottom: 15px;
 }
 
 .metric-title {
+    font-size: 0.85rem;
     color: #9CA3AF;
-    font-size: 0.8rem;
     text-transform: uppercase;
-    margin-bottom: 8px;
+    margin-bottom: 6px;
 }
 
 .metric-value {
+    font-size: 1.35rem;
+    font-weight: bold;
     color: white;
-    font-size: 1.7rem;
-    font-weight: 700;
+    word-wrap: break-word;
 }
 
-.section-title {
-    font-size: 1.3rem;
-    font-weight: 600;
-    margin-top: 1.5rem;
-    margin-bottom: 1rem;
+.question-box {
+    background-color: #111827;
+    padding: 16px;
+    border-radius: 12px;
+    border-left: 4px solid #EF4444;
+    margin-bottom: 12px;
     color: white;
 }
 
-.tag {
-    display: inline-block;
-    background-color: #1E3A8A;
-    color: white;
-    padding: 6px 12px;
-    border-radius: 20px;
-    margin: 4px;
-    font-size: 0.85rem;
-}
-
-.json-box {
+.assumption-card {
     background-color: #111827;
     padding: 18px;
     border-radius: 14px;
-    border: 1px solid #1F2937;
+    border-left: 4px solid #F59E0B;
+    margin-bottom: 15px;
+}
+
+.assumption-label {
+    color: #9CA3AF;
+    font-size: 0.85rem;
+    text-transform: uppercase;
+}
+
+.assumption-value {
+    color: white;
+    font-size: 1.5rem;
+    font-weight: 700;
+    margin-top: 10px;
+    margin-bottom: 10px;
+}
+
+.assumption-source {
+    color: #AAAAAA;
+    font-size: 0.8rem;
 }
 
 </style>
 """, unsafe_allow_html=True)
+
+# ─────────────────────────────────────────────────────────────
+# HEADER
+# ─────────────────────────────────────────────────────────────
+
+st.markdown(
+    '<div class="main-title">❄️ HVAC Intelligence Platform</div>',
+    unsafe_allow_html=True
+)
+
+st.markdown(
+    '<div class="subtitle">AI-powered HVAC extraction and intelligent building analysis dashboard.</div>',
+    unsafe_allow_html=True
+)
 
 # ─────────────────────────────────────────────────────────────
 # SIDEBAR
@@ -103,135 +129,36 @@ st.markdown("""
 
 with st.sidebar:
 
-    st.markdown("## ⚙️ HVAC Control Panel")
+    st.header("⚙️ HVAC Platform")
 
     st.markdown("---")
 
-    st.markdown("### AI Modules")
-
     st.success("NLP Extraction")
-    st.success("Feature Engineering")
+    st.success("Feature Pipeline")
     st.warning("Recommendation Engine Pending")
 
     st.markdown("---")
 
-    st.markdown("### Supported Systems")
+    st.write("### Supported Systems")
 
-    systems = [
-        "VRF",
-        "Chiller",
-        "Central HVAC",
-        "Split AC",
-        "AHU",
-        "FCU"
-    ]
-
-    for system in systems:
-        st.markdown(f"- {system}")
-
-    st.markdown("---")
-
-    st.markdown("""
-    ### Platform Features
-
-    ✅ Natural Language Input  
-    ✅ AI Extraction  
-    ✅ HVAC Analytics  
-    ✅ Energy Insights  
-    ⏳ Recommendation Engine  
-    """)
+    st.write("""
+- VRF
+- Chiller
+- Split AC
+- AHU
+- FCU
+""")
 
 # ─────────────────────────────────────────────────────────────
-# HEADER SECTION
+# USER INPUT
 # ─────────────────────────────────────────────────────────────
 
-header_col1, header_col2 = st.columns([4,1])
+st.subheader("📝 Describe Building Requirements")
 
-with header_col1:
-
-    st.markdown("""
-    <div class="main-title">
-        ❄️ HVAC Intelligence Platform
-    </div>
-    """, unsafe_allow_html=True)
-
-    st.markdown("""
-    <div class="subtitle">
-        AI-powered HVAC requirement extraction, recommendation,
-        and energy analytics dashboard.
-    </div>
-    """, unsafe_allow_html=True)
-
-with header_col2:
-
-    st.info("""
-    ### System Status
-
-    ✅ AI Active  
-    ✅ Gemini Connected  
-    ✅ NLP Extraction Ready
-    """)
-
-# ─────────────────────────────────────────────────────────────
-# KPI SECTION
-# ─────────────────────────────────────────────────────────────
-
-st.markdown(
-    '<div class="section-title">📊 HVAC Analytics Overview</div>',
-    unsafe_allow_html=True
-)
-
-kpi1, kpi2, kpi3, kpi4 = st.columns(4)
-
-with kpi1:
-    st.markdown("""
-    <div class="metric-card">
-        <div class="metric-title">Buildings Analyzed</div>
-        <div class="metric-value">1,284</div>
-    </div>
-    """, unsafe_allow_html=True)
-
-with kpi2:
-    st.markdown("""
-    <div class="metric-card">
-        <div class="metric-title">Avg Energy Savings</div>
-        <div class="metric-value">23%</div>
-    </div>
-    """, unsafe_allow_html=True)
-
-with kpi3:
-    st.markdown("""
-    <div class="metric-card">
-        <div class="metric-title">AI Confidence</div>
-        <div class="metric-value">94%</div>
-    </div>
-    """, unsafe_allow_html=True)
-
-with kpi4:
-    st.markdown("""
-    <div class="metric-card">
-        <div class="metric-title">Recommended Efficiency</div>
-        <div class="metric-value">A++</div>
-    </div>
-    """, unsafe_allow_html=True)
-
-# ─────────────────────────────────────────────────────────────
-# AI INPUT SECTION
-# ─────────────────────────────────────────────────────────────
-
-st.markdown(
-    '<div class="section-title">🤖 AI HVAC Assistant</div>',
-    unsafe_allow_html=True
-)
-
-left_col, right_col = st.columns([3,1])
-
-with left_col:
-
-    user_query = st.text_area(
-        "Describe Building Requirements",
-        height=220,
-        placeholder="""
+user_query = st.text_area(
+    "Enter natural language HVAC requirements",
+    height=220,
+    placeholder="""
 Example:
 
 Need HVAC for a 5-floor office building in Mumbai
@@ -240,31 +167,10 @@ with around 400 employees.
 Need energy-efficient cooling
 with medium budget and high humidity handling.
 """
-    )
-
-with right_col:
-
-    st.markdown("""
-    ### Example Inputs
-
-    🏢 Office Buildings  
-    🏥 Hospitals  
-    🏬 Retail Malls  
-    🏭 Industrial Plants  
-    🏠 Residential Towers  
-    """)
-
-    st.info("""
-    AI automatically extracts:
-    - occupancy
-    - climate
-    - budget
-    - floors
-    - area
-    """)
+)
 
 # ─────────────────────────────────────────────────────────────
-# ANALYZE BUTTON
+# ANALYZE
 # ─────────────────────────────────────────────────────────────
 
 if st.button("🚀 Analyze Requirements", use_container_width=True):
@@ -275,104 +181,212 @@ if st.button("🚀 Analyze Requirements", use_container_width=True):
 
     else:
 
-        with st.spinner("Analyzing requirements using AI..."):
+        try:
 
-            result = extract_hvac_features(user_query)
+            with st.spinner("Analyzing requirements using AI..."):
 
-        st.success("HVAC requirements extracted successfully!")
+                parsed_data = extract_hvac_features(user_query)
 
-        # ─────────────────────────────────────────────────────
-        # EXTRACTED FEATURES
-        # ─────────────────────────────────────────────────────
-
-        st.markdown(
-            '<div class="section-title">📋 Extracted Building Profile</div>',
-            unsafe_allow_html=True
-        )
-
-        feature_col1, feature_col2 = st.columns(2)
-
-        with feature_col1:
-
-            if result.get("building_type"):
-                st.markdown(
-                    f'<span class="tag">🏢 {result.get("building_type")}</span>',
-                    unsafe_allow_html=True
+                pipeline_result = build_feature_pipeline(
+                    parsed_data
                 )
 
-            if result.get("climate_zone"):
-                st.markdown(
-                    f'<span class="tag">🌡️ {result.get("climate_zone")} Climate</span>',
-                    unsafe_allow_html=True
+                metadata_features = pipeline_result[
+                    "metadata_features"
+                ]
+
+                flattened_features = pipeline_result[
+                    "flattened_features"
+                ]
+
+                assumptions = pipeline_result[
+                    "assumptions"
+                ]
+
+                questions = generate_followup_questions(
+                    metadata_features
                 )
 
-            if result.get("budget_level"):
-                st.markdown(
-                    f'<span class="tag">💰 {result.get("budget_level")} Budget</span>',
-                    unsafe_allow_html=True
+            st.success(
+                "HVAC analysis completed successfully!"
+            )
+
+            st.markdown("---")
+
+            # ─────────────────────────────────────────────
+            # FEATURES
+            # ─────────────────────────────────────────────
+
+            st.subheader("📊 Features")
+
+            feature_items = []
+
+            for feature, info in metadata_features.items():
+
+                if info["value"] is not None:
+
+                    feature_items.append(
+                        (
+                            feature,
+                            info["value"]
+                        )
+                    )
+
+            cols = st.columns(4)
+
+            for idx, (feature, value) in enumerate(
+                feature_items
+            ):
+
+                clean_name = (
+                    feature
+                    .replace("_", " ")
+                    .title()
                 )
 
-            if result.get("occupancy"):
-                st.markdown(
-                    f'<span class="tag">👥 {result.get("occupancy")} Occupants</span>',
-                    unsafe_allow_html=True
+                clean_value = str(value).split(".")[-1]
+
+                with cols[idx % 4]:
+
+                    st.markdown(f"""
+<div class="metric-card">
+<div class="metric-title">{clean_name}</div>
+<div class="metric-value">{clean_value}</div>
+</div>
+""", unsafe_allow_html=True)
+
+            # ─────────────────────────────────────────────
+            # ASSUMPTIONS
+            # ─────────────────────────────────────────────
+
+            if assumptions:
+
+                st.markdown("---")
+
+                st.subheader(
+                    "🧠 Assumed / Derived Features"
                 )
 
-        with feature_col2:
+                assumption_cols = st.columns(3)
 
-            if result.get("area_sqft"):
-                st.markdown(
-                    f'<span class="tag">📐 {result.get("area_sqft")} sq ft</span>',
-                    unsafe_allow_html=True
+                for idx, item in enumerate(assumptions):
+
+                    feature_name = item["feature"]
+
+                    feature_value = item["value"]
+
+                    feature_source = item["source"]
+
+                    clean_name = (
+                        feature_name
+                        .replace("_", " ")
+                        .title()
+                    )
+
+                    clean_value = str(
+                        feature_value
+                    ).split(".")[-1]
+
+                    with assumption_cols[idx % 3]:
+
+                        st.markdown(f"""
+<div class="assumption-card">
+<div class="assumption-label">
+{clean_name}
+</div>
+
+<div class="assumption-value">
+{clean_value}
+</div>
+
+<div class="assumption-source">
+Source: {feature_source}
+</div>
+</div>
+""", unsafe_allow_html=True)
+
+                        updated_value = st.text_input(
+                            f"Modify {clean_name}",
+                            value=str(clean_value),
+                            key=f"update_{feature_name}"
+                        )
+
+                        if st.button(
+                            f"Save {clean_name}",
+                            key=f"save_{feature_name}"
+                        ):
+
+                            metadata_features[
+                                feature_name
+                            ]["value"] = updated_value
+
+                            metadata_features[
+                                feature_name
+                            ]["source"] = "user_modified"
+
+                            st.success(
+                                f"{clean_name} updated."
+                            )
+
+            # ─────────────────────────────────────────────
+            # FOLLOW-UP QUESTIONS
+            # ─────────────────────────────────────────────
+
+            if questions:
+
+                st.markdown("---")
+
+                st.subheader(
+                    "❓ Missing Information"
                 )
 
-            if result.get("floors"):
-                st.markdown(
-                    f'<span class="tag">🏬 {result.get("floors")} Floors</span>',
-                    unsafe_allow_html=True
-                )
+                for question in questions:
 
-            if result.get("humidity"):
-                st.markdown(
-                    f'<span class="tag">💧 {result.get("humidity")}% Humidity</span>',
-                    unsafe_allow_html=True
-                )
+                    st.markdown(f"""
+<div class="question-box">
+{question}
+</div>
+""", unsafe_allow_html=True)
 
-            if result.get("outdoor_temp"):
-                st.markdown(
-                    f'<span class="tag">🌞 {result.get("outdoor_temp")} °C</span>',
-                    unsafe_allow_html=True
-                )
+                    st.text_input(
+                        label="",
+                        placeholder="Enter response here...",
+                        key=f"question_{question}"
+                    )
 
-        st.markdown("---")
+            # ─────────────────────────────────────────────
+            # RECOMMENDATION PLACEHOLDER
+            # ─────────────────────────────────────────────
 
-        # ─────────────────────────────────────────────────────
-        # RECOMMENDATION PLACEHOLDER
-        # ─────────────────────────────────────────────────────
+            st.markdown("---")
 
-        st.markdown(
-            '<div class="section-title">❄️ HVAC Recommendation</div>',
-            unsafe_allow_html=True
-        )
+            st.subheader(
+                "❄️ HVAC Recommendation"
+            )
 
-        st.info("""
-        Recommendation engine is currently under development.
+            st.info("""
+Recommendation engine integration pending.
 
-        Once integrated, the system will provide:
-        - Recommended HVAC system
-        - Energy efficiency analysis
-        - Cost estimation
-        - System comparison
-        - AI engineering report
-        """)
+Future output will include:
+- Recommended HVAC system
+- Energy efficiency analysis
+- Cost estimation
+- System comparison
+""")
 
-        # ─────────────────────────────────────────────────────
-        # JSON VIEW
-        # ─────────────────────────────────────────────────────
+            # ─────────────────────────────────────────────
+            # RAW OUTPUT
+            # ─────────────────────────────────────────────
 
-        with st.expander("🔍 View Raw Extracted JSON"):
+            with st.expander(
+                "🔍 View Raw Pipeline Output"
+            ):
 
-            st.json(result)
+                st.json(pipeline_result)
+
+        except Exception as e:
+
+            st.error(f"Error: {str(e)}")
 
 # ─────────────────────────────────────────────────────────────
 # FOOTER
@@ -381,6 +395,6 @@ if st.button("🚀 Analyze Requirements", use_container_width=True):
 st.markdown("---")
 
 st.caption("""
-Powered by Gemini AI • Intelligent HVAC Analytics Platform •
-Built using Streamlit + NLP Extraction + Feature Engineering
+HVAC AI Platform • Streamlit • Gemini AI •
+NLP Extraction • Feature Engineering • Intelligent HVAC Analysis
 """)
