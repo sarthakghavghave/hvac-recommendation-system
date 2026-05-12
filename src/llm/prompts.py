@@ -10,6 +10,15 @@ Rules:
 - Do not explain anything
 - Use only allowed category values
 
+Inference Rules:
+- "energy efficient" usually implies Medium or High energy priority
+- "limited budget" implies Low budget
+- "premium building" implies High budget
+- office buildings usually have Medium or High glass ratio
+- hospitals often operate for long hours
+- older buildings may have poorer insulation
+- geograph
+
 Allowed building_type:
 Residential
 Office
