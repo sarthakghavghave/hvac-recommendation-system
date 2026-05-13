@@ -92,20 +92,23 @@ def generate_occupancy(
 ):
 
     density_map = {
-        "Residential": 0.02,
-        "Office": 0.08,
-        "Retail": 0.12,
-        "Hospital": 0.10,
-        "Industrial": 0.05
+        "Residential": 0.018,
+        "Office": 0.06,
+        "Retail": 0.10,
+        "Hospital": 0.08,
+        "Industrial": 0.04
     }
 
-    occupancy_behavior = np.random.normal(1, 0.25)
+    usage_mode = np.random.choice(["Sparse", "Normal", "Dense"], p=[0.2, 0.6, 0.2])
 
-    occupancy = (
-        area_sqft
-        * density_map[building_type]
-        * occupancy_behavior
-    )
+    mode_factor = {
+        "Sparse": np.random.uniform(0.5, 0.8),
+        "Normal": np.random.uniform(0.8, 1.2),
+        "Dense": np.random.uniform(1.2, 1.8)
+    }
+
+    occupancy = area_sqft * density_map[building_type] * mode_factor[usage_mode]
+    occupancy *= np.random.normal(1, 0.25)
 
     return max(1, int(occupancy))
 
@@ -162,49 +165,60 @@ def generate_insulation(
 ):
 
     if budget_level == "Low":
-
         probs = [0.6, 0.4, 0.0, 0.0]
 
     elif budget_level == "Medium":
-
         probs = [0.15, 0.5, 0.35, 0.0]
 
     else:
-
         probs = [0.0, 0.2, 0.5, 0.3]
 
-    insulation = np.random.choice(
-        ["Poor", "Average", "Good", "Excellent"],
-        p=probs
-    )
+    insulation = np.random.choice(["Poor", "Average", "Good", "Excellent"], p=probs)
 
     if building_age > 40 and np.random.rand() < 0.4:
 
-        insulation = np.random.choice(
-            ["Poor", "Average"],
-            p=[0.7, 0.3]
-        )
+        insulation = np.random.choice(["Poor", "Average"], p=[0.7, 0.3])
 
     return insulation
 
 def generate_glass_ratio(building_type):
 
     if building_type in ["Office", "Retail"]:
+        return np.random.choice(["Medium", "High"], p=[0.45, 0.55])
 
-        return np.random.choice(
-            ["Medium", "High"],
-            p=[0.45, 0.55]
-        )
+    return np.random.choice(["Low", "Medium"], p=[0.7, 0.3])
 
-    return np.random.choice(
-        ["Low", "Medium"],
-        p=[0.7, 0.3]
-    )
+def generate_occupancy_variability(building_type):
+
+    if building_type == "Office":
+        return np.random.choice(["Low", "Medium", "High"], p=[0.2, 0.5, 0.3])
+
+    elif building_type == "Retail":
+        return np.random.choice(["Medium", "High"], p=[0.4, 0.6])
+
+    elif building_type == "Residential":
+        return np.random.choice(["Low", "Medium"], p=[0.7, 0.3])
+
+    elif building_type == "Hospital":
+        return np.random.choice(["Medium", "High"], p=[0.3, 0.7])
+
+    return np.random.choice(["Low", "Medium", "High"], p=[0.4, 0.4, 0.2])
+
+def generate_ventilation_requirement(building_type):
+
+    if building_type == "Hospital":
+        return np.random.choice(["Medium", "High"], p=[0.2, 0.8])
+
+    elif building_type == "Industrial":
+        return np.random.choice(["Medium", "High"], p=[0.4, 0.6])
+
+    elif building_type == "Residential":
+        return np.random.choice(["Low", "Medium"], p=[0.8, 0.2])
+
+    return np.random.choice(["Low", "Medium", "High"], p=[0.3, 0.5, 0.2])
 
 def softmax(x):
-
     e_x = np.exp(x - np.max(x))
-
     return e_x / e_x.sum()
 
 def recommend_hvac(
@@ -218,7 +232,9 @@ def recommend_hvac(
     insulation,
     glass_ratio,
     climate_zone,
-    ceiling_height
+    ceiling_height,
+    occupancy_variability,
+    ventilation_requirement
 ):
 
     scores = {
@@ -230,7 +246,7 @@ def recommend_hvac(
     }
 
     if area_sqft < 2500:
-        scores["Split AC"] += 5
+        scores["Split AC"] += 4
 
     if 2500 <= area_sqft < 20000:
         scores["Multi-Split"] += 4
@@ -289,11 +305,8 @@ def recommend_hvac(
         scores["Central Chiller"] += 2
 
     if building_age > 40:
-
         scores["Split AC"] += 2
-
         scores["Packaged Unit"] += 2
-
         scores["Central Chiller"] -= 2
 
     if insulation == "Poor":
@@ -307,6 +320,24 @@ def recommend_hvac(
         scores["VRF"] += 1
         scores["Central Chiller"] += 1
 
+    if occupancy_variability == "High":
+        scores["VRF"] += 3
+
+    if occupancy_variability == "Medium":
+        scores["Multi-Split"] += 2
+
+    if ventilation_requirement == "High":
+        scores["Central Chiller"] += 3
+
+    if ventilation_requirement == "High":
+        scores["Split AC"] -= 2
+
+    if (
+        ventilation_requirement == "Medium"
+        and ceiling_height > 14
+    ):
+        scores["Packaged Unit"] += 2
+
     if (
         2500 <= area_sqft <= 15000
         and floors <= 3
@@ -315,18 +346,13 @@ def recommend_hvac(
         scores["Multi-Split"] += 5
         
     labels = list(scores.keys())
-
     values = np.array(list(scores.values()))
-
     temperature = 2.5
-
     probs = softmax(values / temperature)
-
     hvac = np.random.choice(labels, p=probs)
     
-
     # recommendation randomness
-    if np.random.rand() < 0.08:
+    if np.random.rand() < 0.03:
 
         hvac = np.random.choice([
             "VRF",
@@ -384,6 +410,14 @@ for _ in range(NUM_ROWS):
         building_type
     )
 
+    occupancy_variability = generate_occupancy_variability(
+        building_type
+    )
+
+    ventilation_requirement = generate_ventilation_requirement(
+        building_type
+    )
+
     recommended_hvac = recommend_hvac(
         building_type,
         area_sqft,
@@ -395,8 +429,11 @@ for _ in range(NUM_ROWS):
         insulation,
         glass_ratio,
         climate_zone,
-        ceiling_height
+        ceiling_height,
+        occupancy_variability,
+        ventilation_requirement
     )
+
 
     row = {
 
