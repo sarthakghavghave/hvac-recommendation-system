@@ -1,5 +1,7 @@
 import sys
 import os
+import json
+from pathlib import Path
 
 sys.path.append(
     os.path.abspath(
@@ -11,14 +13,72 @@ import streamlit as st
 
 from src.llm.extractor import extract_hvac_features
 from src.feature_engineering.pipeline import build_feature_pipeline
-from src.llm.question_generator import generate_followup_questions
+from src.llm.question_generator import CRITICAL_FIELDS, generate_followup_questions
+
+
+def get_feature_state_path():
+    root_dir = Path(__file__).resolve().parents[1]
+    output_dir = root_dir / "data" / "processed"
+    output_dir.mkdir(parents=True, exist_ok=True)
+    return output_dir / "hvac_feature_state.json"
+
+
+def save_feature_state(payload, path):
+    with open(path, "w", encoding="utf-8") as file:
+        json.dump(payload, file, indent=2)
+
+
+def load_feature_state(path):
+    if not path.exists():
+        return None
+
+    try:
+        with open(path, "r", encoding="utf-8") as file:
+            return json.load(file)
+    except Exception:
+        return None
+
+
+def persist_pipeline_result(pipeline_result, user_query, path):
+    payload = {
+        "user_query": user_query,
+        "metadata_features": pipeline_result["metadata_features"],
+        "flattened_features": pipeline_result["flattened_features"],
+        "assumptions": pipeline_result["assumptions"]
+    }
+    save_feature_state(payload, path)
+    st.session_state["hvac_state"] = payload
+
+
+def rebuild_pipeline_from_metadata(metadata_features):
+    flattened = {key: info["value"] for key, info in metadata_features.items()}
+    return build_feature_pipeline(flattened)
+
+
+def initialize_hvac_state(path):
+    if "hvac_state" not in st.session_state:
+        loaded_state = load_feature_state(path)
+
+        if loaded_state is None:
+            st.session_state["hvac_state"] = {
+                "user_query": "",
+                "metadata_features": {},
+                "flattened_features": {},
+                "assumptions": []
+            }
+        else:
+            st.session_state["hvac_state"] = loaded_state
+
+
+FEATURE_STATE_PATH = get_feature_state_path()
+initialize_hvac_state(FEATURE_STATE_PATH)
 
 # ─────────────────────────────────────────────────────────────
 # PAGE CONFIG
 # ─────────────────────────────────────────────────────────────
 
 st.set_page_config(
-    page_title="HVAC Intelligence Platform",
+    page_title="AI-powered HVAC Decision Support for Sales",
     layout="wide",
     page_icon="❄️"
 )
@@ -158,6 +218,7 @@ st.subheader("📝 Describe Building Requirements")
 user_query = st.text_area(
     "Enter natural language HVAC requirements",
     height=220,
+    value=st.session_state["hvac_state"]["user_query"],
     placeholder="""
 Example:
 
@@ -166,130 +227,65 @@ with around 400 employees.
 
 Need energy-efficient cooling
 with medium budget and high humidity handling.
-"""
+""",
+    key="user_query"
 )
 
-# ─────────────────────────────────────────────────────────────
-# ANALYZE
-# ─────────────────────────────────────────────────────────────
 
-if st.button("🚀 Analyze Requirements", use_container_width=True):
+def get_missing_fields(metadata_features):
+    missing = []
 
-    if not user_query.strip():
+    for field, config in CRITICAL_FIELDS.items():
+        feature = metadata_features.get(field)
 
-        st.warning("Please enter building requirements.")
+        if feature is None:
+            continue
 
-    else:
+        if feature["value"] is None:
+            missing.append({
+                "field": field,
+                "question": config["question"]
+            })
 
-        try:
+    return missing
 
-            with st.spinner("Analyzing requirements using AI..."):
 
-                parsed_data = extract_hvac_features(user_query)
+def render_feature_dashboard(metadata_features, assumptions):
+    st.markdown("---")
+    st.subheader("📊 Features")
 
-                pipeline_result = build_feature_pipeline(
-                    parsed_data
-                )
+    feature_items = []
+    for feature, info in metadata_features.items():
+        if info["value"] is not None:
+            feature_items.append((feature, info["value"]))
 
-                metadata_features = pipeline_result[
-                    "metadata_features"
-                ]
+    cols = st.columns(4)
+    for idx, (feature, value) in enumerate(feature_items):
+        clean_name = feature.replace("_", " ").title()
+        clean_value = str(value).split(".")[-1]
 
-                flattened_features = pipeline_result[
-                    "flattened_features"
-                ]
-
-                assumptions = pipeline_result[
-                    "assumptions"
-                ]
-
-                questions = generate_followup_questions(
-                    metadata_features
-                )
-
-            st.success(
-                "HVAC analysis completed successfully!"
-            )
-
-            st.markdown("---")
-
-            # ─────────────────────────────────────────────
-            # FEATURES
-            # ─────────────────────────────────────────────
-
-            st.subheader("📊 Features")
-
-            feature_items = []
-
-            for feature, info in metadata_features.items():
-
-                if info["value"] is not None:
-
-                    feature_items.append(
-                        (
-                            feature,
-                            info["value"]
-                        )
-                    )
-
-            cols = st.columns(4)
-
-            for idx, (feature, value) in enumerate(
-                feature_items
-            ):
-
-                clean_name = (
-                    feature
-                    .replace("_", " ")
-                    .title()
-                )
-
-                clean_value = str(value).split(".")[-1]
-
-                with cols[idx % 4]:
-
-                    st.markdown(f"""
+        with cols[idx % 4]:
+            st.markdown(f"""
 <div class="metric-card">
 <div class="metric-title">{clean_name}</div>
 <div class="metric-value">{clean_value}</div>
 </div>
 """, unsafe_allow_html=True)
 
-            # ─────────────────────────────────────────────
-            # ASSUMPTIONS
-            # ─────────────────────────────────────────────
+    if assumptions:
+        st.markdown("---")
+        st.subheader("🧠 Assumed / Derived Features")
+        assumption_cols = st.columns(3)
 
-            if assumptions:
+        for idx, item in enumerate(assumptions):
+            feature_name = item["feature"]
+            feature_value = item["value"]
+            feature_source = item["source"]
+            clean_name = feature_name.replace("_", " ").title()
+            clean_value = str(feature_value).split(".")[-1]
 
-                st.markdown("---")
-
-                st.subheader(
-                    "🧠 Assumed / Derived Features"
-                )
-
-                assumption_cols = st.columns(3)
-
-                for idx, item in enumerate(assumptions):
-
-                    feature_name = item["feature"]
-
-                    feature_value = item["value"]
-
-                    feature_source = item["source"]
-
-                    clean_name = (
-                        feature_name
-                        .replace("_", " ")
-                        .title()
-                    )
-
-                    clean_value = str(
-                        feature_value
-                    ).split(".")[-1]
-
-                    with assumption_cols[idx % 3]:
-
-                        st.markdown(f"""
+            with assumption_cols[idx % 3]:
+                st.markdown(f"""
 <div class="assumption-card">
 <div class="assumption-label">
 {clean_name}
@@ -305,88 +301,127 @@ Source: {feature_source}
 </div>
 """, unsafe_allow_html=True)
 
-                        updated_value = st.text_input(
-                            f"Modify {clean_name}",
-                            value=str(clean_value),
-                            key=f"update_{feature_name}"
-                        )
-
-                        if st.button(
-                            f"Save {clean_name}",
-                            key=f"save_{feature_name}"
-                        ):
-
-                            metadata_features[
-                                feature_name
-                            ]["value"] = updated_value
-
-                            metadata_features[
-                                feature_name
-                            ]["source"] = "user_modified"
-
-                            st.success(
-                                f"{clean_name} updated."
-                            )
-
-            # ─────────────────────────────────────────────
-            # FOLLOW-UP QUESTIONS
-            # ─────────────────────────────────────────────
-
-            if questions:
-
-                st.markdown("---")
-
-                st.subheader(
-                    "❓ Missing Information"
+                updated_value = st.text_input(
+                    f"Modify {clean_name}",
+                    value=str(clean_value),
+                    key=f"update_{feature_name}"
                 )
 
-                for question in questions:
+                if st.button(f"Save {clean_name}", key=f"save_{feature_name}"):
+                    metadata_features[feature_name]["value"] = updated_value
+                    metadata_features[feature_name]["source"] = "user_modified"
+                    pipeline_result = rebuild_pipeline_from_metadata(metadata_features)
+                    persist_pipeline_result(pipeline_result, st.session_state["user_query"], FEATURE_STATE_PATH)
+                    st.success(f"{clean_name} updated.")
 
-                    st.markdown(f"""
-<div class="question-box">
-{question}
-</div>
-""", unsafe_allow_html=True)
 
-                    st.text_input(
-                        label="",
-                        placeholder="Enter response here...",
-                        key=f"question_{question}"
-                    )
+def build_raw_output_summary(metadata_features, flattened_features, assumptions):
+    summary = []
 
-            # ─────────────────────────────────────────────
-            # RECOMMENDATION PLACEHOLDER
-            # ─────────────────────────────────────────────
+    for feature, info in metadata_features.items():
+        summary.append({
+            "Feature": feature.replace("_", " ").title(),
+            "Value": info["value"],
+            "Source": info["source"]
+        })
 
-            st.markdown("---")
+    return {
+        "summary": summary,
+        "flattened_features": flattened_features,
+        "assumptions": [
+            {
+                "Feature": item["feature"].replace("_", " ").title(),
+                "Value": item["value"],
+                "Source": item["source"]
+            }
+            for item in assumptions
+        ]
+    }
 
-            st.subheader(
-                "❄️ HVAC Recommendation"
-            )
+# ─────────────────────────────────────────────────────────────
+# ANALYZE
+# ─────────────────────────────────────────────────────────────
 
-            st.info("""
+analyze_clicked = st.button("🚀 Analyze Requirements", use_container_width=True)
+
+if analyze_clicked:
+    if not st.session_state["user_query"].strip():
+        st.warning("Please enter building requirements.")
+    else:
+        try:
+            with st.spinner("Analyzing requirements using AI..."):
+                parsed_data = extract_hvac_features(st.session_state["user_query"])
+                pipeline_result = build_feature_pipeline(parsed_data)
+                persist_pipeline_result(pipeline_result, st.session_state["user_query"], FEATURE_STATE_PATH)
+
+            st.success("HVAC analysis completed successfully!")
+        except Exception as e:
+            st.error(f"Error: {str(e)}")
+
+metadata_features = st.session_state["hvac_state"]["metadata_features"]
+assumptions = st.session_state["hvac_state"]["assumptions"]
+questions = generate_followup_questions(metadata_features)
+
+if metadata_features:
+    render_feature_dashboard(metadata_features, assumptions)
+
+    missing_fields = get_missing_fields(metadata_features)
+    if missing_fields:
+        st.markdown("---")
+        st.subheader("❓ Missing Information")
+
+        with st.form("missing_answers_form"):
+            for item in missing_fields:
+                st.text_input(
+                    item["question"],
+                    key=f"missing_{item['field']}",
+                    value=st.session_state.get(f"missing_{item['field']}", "")
+                )
+
+            if st.form_submit_button("Save Missing Information"):
+                updated = False
+                for item in missing_fields:
+                    answer = st.session_state.get(f"missing_{item['field']}", "").strip()
+                    if answer:
+                        metadata_features[item["field"]]["value"] = answer
+                        metadata_features[item["field"]]["source"] = "user"
+                        updated = True
+
+                if updated:
+                    pipeline_result = rebuild_pipeline_from_metadata(metadata_features)
+                    persist_pipeline_result(pipeline_result, st.session_state["user_query"], FEATURE_STATE_PATH)
+                    st.success("Missing information saved and pipeline refreshed.")
+                else:
+                    st.info("No new answers were provided.")
+
+    st.markdown("---")
+    st.subheader("❄️ HVAC Recommendation")
+    st.info('''
 Recommendation engine integration pending.
 
 Future output will include:
 - Recommended HVAC system
 - Energy efficiency analysis
-- Cost estimation
+- Cost & ROI estimation
 - System comparison
-""")
+''')
 
-            # ─────────────────────────────────────────────
-            # RAW OUTPUT
-            # ─────────────────────────────────────────────
+    with st.expander("🔍 View Raw Pipeline Output"):
+        raw_output = build_raw_output_summary(
+            metadata_features,
+            st.session_state["hvac_state"]["flattened_features"],
+            assumptions
+        )
 
-            with st.expander(
-                "🔍 View Raw Pipeline Output"
-            ):
+        st.write("### Feature summary")
+        st.table(raw_output["summary"])
 
-                st.json(pipeline_result)
+        st.write("### Flattened features")
+        st.json(raw_output["flattened_features"])
 
-        except Exception as e:
-
-            st.error(f"Error: {str(e)}")
+        if raw_output["assumptions"]:
+            st.write("### Assumptions")
+            st.table(raw_output["assumptions"])
 
 # ─────────────────────────────────────────────────────────────
 # FOOTER
