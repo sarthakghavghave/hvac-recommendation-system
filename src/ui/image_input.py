@@ -19,7 +19,7 @@ for automated feature extraction.
     )
 
     if uploaded_file is not None:
-        st.image(uploaded_file,use_container_width=True)
+        st.image(uploaded_file, width='stretch')
 
     return uploaded_file
 

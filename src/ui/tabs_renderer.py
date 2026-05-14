@@ -132,7 +132,7 @@ def render_analysis_tabs(analysis,prediction,metrics,assumptions):
 
         st.dataframe(
             rows,
-            use_container_width=True,
+            width='stretch',
             hide_index=True
         )
 
