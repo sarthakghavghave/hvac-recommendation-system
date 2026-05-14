@@ -10,5 +10,7 @@ plotly
 streamlit
 jupyter
 pydantic
-google.genai
+google-generativeai
 python-dotenv
+opencv-python
+Pillow

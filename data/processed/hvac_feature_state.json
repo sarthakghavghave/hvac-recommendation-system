@@ -1,0 +1,74 @@
+{
+  "pipeline_started": true,
+  "user_query": "humid ",
+  "metadata_features": {
+    "building_type": {
+      "value": null,
+      "source": "missing"
+    },
+    "climate_zone": {
+      "value": "Humid",
+      "source": "user"
+    },
+    "budget_level": {
+      "value": null,
+      "source": "missing"
+    },
+    "area_sqft": {
+      "value": null,
+      "source": "missing"
+    },
+    "floors": {
+      "value": null,
+      "source": "missing"
+    },
+    "ceiling_height": {
+      "value": null,
+      "source": "missing"
+    },
+    "occupancy": {
+      "value": null,
+      "source": "missing"
+    },
+    "operating_hours": {
+      "value": null,
+      "source": "missing"
+    },
+    "building_age": {
+      "value": null,
+      "source": "missing"
+    },
+    "outdoor_temp": {
+      "value": 33,
+      "source": "user"
+    },
+    "humidity": {
+      "value": 85,
+      "source": "user"
+    },
+    "insulation": {
+      "value": "Good",
+      "source": "user"
+    },
+    "glass_ratio": {
+      "value": "Medium",
+      "source": "user"
+    }
+  },
+  "flattened_features": {
+    "building_type": null,
+    "climate_zone": "Humid",
+    "budget_level": null,
+    "area_sqft": null,
+    "floors": null,
+    "ceiling_height": null,
+    "occupancy": null,
+    "operating_hours": null,
+    "building_age": null,
+    "outdoor_temp": 33,
+    "humidity": 85,
+    "insulation": "Good",
+    "glass_ratio": "Medium"
+  },
+  "assumptions": []
+}

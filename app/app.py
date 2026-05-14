@@ -21,6 +21,31 @@ from src.ui.followup_dialog import show_followup_dialog
 from src.ui.recommendation_card import render_recommendation_hero
 from src.ui.tabs_renderer import render_analysis_tabs
 
+from models.floor_extractor import extract_from_floor_plan
+
+# Initialize session state
+if "user_query" not in st.session_state:
+    st.session_state["user_query"] = ""
+
+# SIDEBAR
+with st.sidebar:
+    st.header("Building Parameters")
+    building_type = st.selectbox("Building Type", ["Office", "Residential", "Commercial", "Industrial"])
+    floor_count = st.number_input("Number of Floors", min_value=1, value=1)
+    known_area = st.number_input("Known Area (m²)", min_value=0.0, value=0.0)
+
+    st.markdown("---")
+    st.subheader("Additional HVAC Inputs")
+    climate_zone = st.selectbox("Climate Zone", ["Hot", "Warm", "Cold", "Humid"])
+    budget_level = st.selectbox("Budget Level", ["Low", "Medium", "High"])
+    insulation = st.selectbox("Insulation Quality", ["Poor", "Average", "Good", "Excellent"])
+    ceiling_height = st.number_input("Ceiling Height (ft)", min_value=6.0, value=10.0)
+    occupancy = st.number_input("Occupancy", min_value=1, value=50)
+    operating_hours = st.number_input("Operating Hours per Day", min_value=1, max_value=24, value=8)
+    building_age = st.number_input("Building Age (years)", min_value=0, value=10)
+    outdoor_temp = st.number_input("Outdoor Temperature (°C)", value=25.0)
+    humidity = st.number_input("Humidity (%)", min_value=0.0, max_value=100.0, value=50.0)
+
 # FILE STORAGE
 def get_feature_state_path():
     root_dir = Path(__file__).resolve().parents[1]
@@ -328,6 +353,9 @@ input_mode = st.radio(
     horizontal=True
 )
 
+if input_mode == "Text Description":
+    st.session_state.pop("image_features", None)
+
 # TEXT INPUT
 if input_mode == "Text Description":
 
@@ -361,13 +389,17 @@ else:
         render_image_upload_section()
     )
 
+    if uploaded_file is None:
+        st.session_state.pop("image_features", None)
+
     if uploaded_file is not None:
 
         extract_clicked = st.button(
 
             "Extract Building Features",
 
-            use_container_width=True
+            key="extract_features",
+            width='stretch'
         )
 
         if extract_clicked:
@@ -376,19 +408,16 @@ else:
                 "Extracting building parameters..."
             ):
 
-                # TEMPORARY MOCK RESPONSE
-                extracted_json = {
-                    "building_type": "Office",
-                    "floors": 4,
-                    "area_sqft": 18000,
-                    "occupancy": 350,
-                    "ceiling_height": 11,
-                    "climate_zone": "Humid"
-                }
+                extracted = extract_from_floor_plan(
+                    uploaded_file,
+                    building_type=building_type,
+                    floor_count=floor_count,
+                    known_area_m2=known_area if known_area > 0 else None
+                )
 
                 st.session_state[
                     "image_features"
-                ] = extracted_json
+                ] = extracted
 
         if "image_features" in st.session_state:
 
@@ -403,160 +432,200 @@ else:
 
                 "Generate Recommendation",
 
-                use_container_width=True
+                key="generate_image_rec",
+                width='stretch'
             )
 
             if generate_clicked:
 
-                st.success(
-                    "Image feature pipeline ready for integration."
-                )
+                full_features = {
+                    **edited,
+                    "building_type": building_type,
+                    "climate_zone": climate_zone,
+                    "budget_level": budget_level,
+                    "insulation": insulation,
+                    "ceiling_height": ceiling_height,
+                    "occupancy": occupancy,
+                    "operating_hours": operating_hours,
+                    "building_age": building_age,
+                    "outdoor_temp": outdoor_temp,
+                    "humidity": humidity
+                }
 
-                st.json(edited)
+                result = predict_hvac(full_features)
 
-# BUTTON
-analyze_clicked = st.button(
-    "Generate Recommendation",
-    use_container_width=True
-)
+                st.session_state["image_prediction"] = result
+                st.session_state["image_full_features"] = full_features
 
-if analyze_clicked:
+        if "image_prediction" in st.session_state:
 
-    if not st.session_state[
-        "user_query"
-    ].strip():
-
-        st.warning(
-            "Please enter building details."
-        )
-
-    else:
-
-        try:
-
-            with st.spinner(
-                "Analyzing requirements..."
-            ):
-
-                parsed_data = (
-                    extract_hvac_features(
-                        st.session_state[
-                            "user_query"
-                        ]
-                    )
-                )
-
-                pipeline_result = (
-                    build_feature_pipeline(
-                        parsed_data
-                    )
-                )
-
-                persist_pipeline_result(
-
-                    pipeline_result,
-
-                    st.session_state[
-                        "user_query"
-                    ],
-
-                    FEATURE_STATE_PATH
-                )
-
-            st.success(
-                "Recommendation generated successfully."
-            )
-
-        except Exception as e:
-
-            st.error(
-                f"Error: {str(e)}"
-            )
-
-
-# MAIN FLOW
-metadata_features = st.session_state[
-    "hvac_state"
-]["metadata_features"]
-
-assumptions = st.session_state[
-    "hvac_state"
-]["assumptions"]
-
-flattened_features = st.session_state[
-    "hvac_state"
-]["flattened_features"]
-
-if metadata_features and st.session_state["hvac_state"]["pipeline_started"]:
-
-    # FOLLOW-UP QUESTIONS
-    missing_fields = get_missing_fields(
-        metadata_features
-    )
-
-    if len(missing_fields) > 0:
-
-        show_followup_dialog(
-
-            missing_fields,
-            metadata_features
-        )
-
-        st.warning( 
-            "Complete missing building information."
-        )
-
-    else:
-
-        try:
-
-            # PREDICTION
-            prediction = predict_hvac(
-                flattened_features
-            )
-
-            recommended = prediction[
-                "recommended_hvac"
-            ]
-
-            # HERO SECTION
             st.markdown("---")
 
-            render_recommendation_hero(
-                prediction
+            prediction = st.session_state["image_prediction"]
+            full_features = st.session_state["image_full_features"]
+            recommended = prediction["recommended_hvac"]
+
+            render_recommendation_hero(prediction)
+
+            analysis = generate_recommendation_summary(
+                recommended,
+                full_features,
+                prediction["top_recommendations"]
             )
 
-            # ANALYSIS
-            analysis = (
-                generate_recommendation_summary(
-                    recommended,
-                    flattened_features,
-                    prediction[
-                        "top_recommendations"
-                    ]
-                )
+            metrics = generate_business_metrics(
+                recommended,
+                full_features
             )
 
-            metrics = (
-                generate_business_metrics(
-                    recommended,
-                    flattened_features
-                )
-            )
-
-            # TABS
             st.markdown("---")
             render_analysis_tabs(
                 analysis,
                 prediction,
                 metrics,
-                assumptions
+                []
             )
 
-        except Exception as e:
-            st.error(
-                f"Prediction Error: {str(e)}"
+# BUTTON
+if input_mode == "Text Description":
+
+    analyze_clicked = st.button(
+        "Generate Recommendation",
+        key="generate_rec",
+        width='stretch'
+    )
+
+    if analyze_clicked:
+
+        if not st.session_state[
+            "user_query"
+        ].strip():
+
+            st.warning(
+                "Please enter building details."
             )
+
+        else:
+
+            try:
+
+                with st.spinner(
+                    "Analyzing requirements..."
+                ):
+
+                    parsed_data = (
+                        extract_hvac_features(
+                            st.session_state[
+                                "user_query"
+                            ]
+                        )
+                    )
+
+                    pipeline_result = (
+                        build_feature_pipeline(
+                            parsed_data
+                        )
+                    )
+
+                    persist_pipeline_result(
+
+                        pipeline_result,
+
+                        st.session_state[
+                            "user_query"
+                        ],
+
+                        FEATURE_STATE_PATH
+                    )
+
+                st.success(
+                    "Recommendation generated successfully."
+                )
+
+            except Exception as e:
+
+                st.error(
+                    f"Error: {str(e)}"
+                )
+# MAIN FLOW - Only for text mode
+if input_mode == "Text Description":
+
+    metadata_features = st.session_state[
+        "hvac_state"
+    ]["metadata_features"]
+
+    assumptions = st.session_state[
+        "hvac_state"
+    ]["assumptions"]
+
+    flattened_features = st.session_state[
+        "hvac_state"
+    ]["flattened_features"]
+
+    if metadata_features and st.session_state["hvac_state"]["pipeline_started"]:
+
+        missing_fields = get_missing_fields(
+            metadata_features
+        )
+
+        if len(missing_fields) > 0:
+
+            show_followup_dialog(
+                missing_fields,
+                metadata_features
+            )
+
+            st.warning(
+                "Complete missing building information."
+            )
+
+        else:
+
+            try:
+
+                prediction = predict_hvac(
+                    flattened_features
+                )
+
+                recommended = prediction[
+                    "recommended_hvac"
+                ]
+
+                st.markdown("---")
+
+                render_recommendation_hero(
+                    prediction
+                )
+
+                analysis = (
+                    generate_recommendation_summary(
+                        recommended,
+                        flattened_features,
+                        prediction[
+                            "top_recommendations"
+                        ]
+                    )
+                )
+
+                metrics = (
+                    generate_business_metrics(
+                        recommended,
+                        flattened_features
+                    )
+                )
+
+                st.markdown("---")
+                render_analysis_tabs(
+                    analysis,
+                    prediction,
+                    metrics,
+                    assumptions
+                )
+
+            except Exception as e:
+                st.error(
+                    f"Prediction Error: {str(e)}"
+                )
 
 # FOOTER
 st.markdown("---")
