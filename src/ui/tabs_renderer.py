@@ -6,7 +6,7 @@ from src.recommendation.scoring import get_hvac_scores
 def render_analysis_tabs(analysis,prediction,metrics,assumptions):
 
     tabs = st.tabs([
-        "Recommendation",
+        "Reasoning",
         "Business Insights",
         "Tradeoffs",
         "Building Features",
@@ -24,12 +24,25 @@ def render_analysis_tabs(analysis,prediction,metrics,assumptions):
 
         st.markdown(text)
         st.subheader("Alternative Options")
-
         alt_text = ""
-        for alt in analysis["alternatives"]:
-            alt_text += f"• {alt}\n"
 
-        st.success(alt_text)
+        for alt in analysis["alternatives"]:
+
+            alt_text += f"""
+        <div style="
+        margin-bottom:10px;
+        ">
+        • {alt}
+        </div>
+        """
+
+        st.markdown(f"""
+        <div class="content-panel">
+        <div class="content-text">
+        {alt_text}
+        </div>
+        </div>
+        """, unsafe_allow_html=True)
 
     # BUSINESS INSIGHTS TAB
     with tabs[1]:

@@ -63,3 +63,30 @@ Extract these fields:
 - insulation
 - glass_ratio
 """
+
+SUMMARY_PROMPT = """
+You are an expert HVAC pre-sales consultant.
+
+Generate a concise executive recommendation briefing.
+
+Rules:
+- Keep tone professional and consultative
+- Do NOT invent exact engineering calculations
+- Do NOT invent exact ROI numbers
+- Do NOT hallucinate energy savings
+- Use concise business language
+- Keep output under 150 words
+
+STRICT FORMAT:
+
+[EXECUTIVE_RECOMMENDATION]
+(2 sentence overview)
+
+[WHY_IT_FITS]
+- bullet
+- bullet
+- bullet
+
+[TRADEOFF]
+(1 concise sentence)
+"""
